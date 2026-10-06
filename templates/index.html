@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🌾 Crop Yield Predictor · Flask + XGBoost</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🌾 Crop Yield Predictor</h1>
+        <p class="subhead">
+            Flask + XGBoost · Ethiopia plot-level data · Model R² = {{ r2 }}, MAE = {{ mae }} t/ha
+        </p>
+    </header>
+
+    <div class="grid">
+        <!-- INPUT FORM -->
+        <section class="card">
+            <h2> Field &amp; Management <span>13 features</span></h2>
+            <form id="predictForm" class="form-grid">
+                <div class="field">
+                    <label for="region">Region</label>
+                    <select id="region" name="region">
+                        <option>Oromia</option>
+                        <option>Amhara</option>
+                        <option>Tigray</option>
+                        <option>SNNPR</option>
+                        <option>Somali</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="crop_type">Crop type</label>
+                    <select id="crop_type" name="crop_type">
+                        <option>Teff</option>
+                        <option>Maize</option>
+                        <option>Wheat</option>
+                        <option>Sorghum</option>
+                        <option>Barley</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="survey_year">Survey year</label>
+                    <select id="survey_year" name="survey_year">
+                        <option>2021</option>
+                        <option>2022</option>
+                        <option>2023</option>
+                        <option>2024</option>
+                        <option selected>2025</option>
+                        <option >2026</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="planting_month">Planting month</label>
+                    <select id="planting_month" name="planting_month">
+                        <option>Feb</option>
+                        <option>Mar</option>
+                        <option selected>Jun</option>
+                        <option>Jul</option>
+                        <option>Aug</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="altitude_m">Altitude (m)</label>
+                    <input type="number" id="altitude_m" name="altitude_m" value="1850" step="10" />
+                </div>
+                <div class="field">
+                    <label for="rainfall_mm_season">Rainfall (mm/season)</label>
+                    <input type="number" id="rainfall_mm_season" name="rainfall_mm_season" value="850" step="10" />
+                </div>
+                <div class="field">
+                    <label for="farm_size_ha">Farm size (ha)</label>
+                    <input type="number" id="farm_size_ha" name="farm_size_ha" value="1.2" step="0.1" />
+                </div>
+                <div class="field">
+                    <label for="fertilizer_kg_per_ha">Fertilizer (kg/ha)</label>
+                    <input type="number" id="fertilizer_kg_per_ha" name="fertilizer_kg_per_ha" value="35" step="1" />
+                </div>
+                <div class="field">
+                    <label for="improved_seed_used">Improved seed</label>
+                    <select id="improved_seed_used" name="improved_seed_used">
+                        <option value="0">No (0)</option>
+                        <option value="1">Yes (1)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="pest_disease_flag">Pest / disease</label>
+                    <select id="pest_disease_flag" name="pest_disease_flag">
+                        <option value="0">No (0)</option>
+                        <option value="1">Yes (1)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="soil_quality_index">Soil quality (0–1)</label>
+                    <input type="number" id="soil_quality_index" name="soil_quality_index" value="0.65" step="0.01" min="0" max="1" />
+                </div>
+                <div class="field">
+                    <label for="labor_days_per_ha">Labor (days/ha)</label>
+                    <input type="number" id="labor_days_per_ha" name="labor_days_per_ha" value="45" step="1" />
+                </div>
+                <div class="field">
+                    <label for="distance_to_market_km">Distance to market (km)</label>
+                    <input type="number" id="distance_to_market_km" name="distance_to_market_km" value="12" step="0.1" />
+                </div>
+            </form>
+
+            <button id="predictBtn" class="btn-predict">⚡ Predict yield</button>
+            <div id="errorMsg" class="error-msg" style="display:none;"></div>
+        </section>
+
+        <!-- RESULT + CHART -->
+        <section class="card">
+            <h2> Prediction &amp; model</h2>
+
+            <div id="resultPlaceholder" class="result-box placeholder">
+                <div class="result-label">Predicted yield</div>
+                <div class="result-value" style="font-size:2rem;color:#6c8d7c;">—</div>
+                <div class="result-note">Fill the form and click predict</div>
+            </div>
+
+            <div id="resultContainer" style="display:none;">
+                <div class="result-box">
+                    <div class="result-label">🌾 Estimated yield</div>
+                    <div class="result-value" id="predictedYield">0.00 <span class="result-unit">t/ha</span></div>
+                    <div class="result-note" id="yieldNote">…</div>
+                </div>
+            </div>
+
+            <div class="section-title">
+                <span>🔍 Feature influence</span>
+                <span class="badge">global</span>
+            </div>
+            <div class="chart-container"><canvas id="importanceChart"></canvas></div>
+            <div class="small-note">*XGBoost gain-based relative importance.</div>
+        </section>
+    </div>
+</div>
+
+<script>
+    // Pass server-side data into JS
+    window.CHART_DATA = {{ chart_data | tojson }};
+</script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
